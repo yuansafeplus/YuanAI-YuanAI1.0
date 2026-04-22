@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YuanAI Internet</title>
+
+<style>
+body{
+font-family: Arial;
+background:#0f172a;
+color:white;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+margin:0;
+}
+
+.container{
+width:420px;
+background:#111827;
+padding:15px;
+border-radius:10px;
+}
+
+.header{
+font-size:20px;
+margin-bottom:10px;
+}
+
+.chat{
+height:260px;
+overflow-y:auto;
+background:#0b1220;
+padding:10px;
+border-radius:8px;
+margin-bottom:10px;
+}
+
+.input-area{
+display:flex;
+gap:5px;
+margin-top:5px;
+}
+
+input{
+flex:1;
+padding:8px;
+border:none;
+border-radius:5px;
+}
+
+button{
+padding:8px;
+border:none;
+background:#2563eb;
+color:white;
+border-radius:5px;
+cursor:pointer;
+}
+
+img{
+width:100%;
+margin-top:10px;
+border-radius:8px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<div class="header">YuanAI Internet</div>
+
+<div class="chat" id="chat"></div>
+
+<div class="input-area">
+<input id="entry" placeholder="Ask anything...">
+<button onclick="sendMessage()">Send</button>
+</div>
+
+<div class="input-area">
+<input id="imgPrompt" placeholder="Generate image...">
+<button onclick="generateImage()">Image</button>
+</div>
+
+<div class="input-area">
+<button onclick="getWeather()">Weather</button>
+<button onclick="searchWeb()">Search</button>
+</div>
+
+<img id="imgOut">
+
+</div>
+
+<script>
+
+/* ================= MEMORY ================= */
+let memory = JSON.parse(localStorage.getItem("yuanai_memory") || "{}");
+
+function saveMemory(){
+localStorage.setItem("yuanai_memory", JSON.stringify(memory));
+}
+
+
+/* ================= CHAT ================= */
+function addMessage(user, text){
+let chat = document.getElementById("chat");
+let p = document.createElement("p");
+p.textContent = user + ": " + text;
+chat.appendChild(p);
+chat.scrollTop = chat.scrollHeight;
+}
+
+
+/* ================= INTENT DETECTOR ================= */
+function detectIntent(msg){
+
+msg = msg.toLowerCase();
+
+/* WEATHER */
+if(msg.includes("weather")) return "weather";
+
+/* WIKI / INFO */
+if(msg.includes("what is") || msg.includes("who is") || msg.includes("wiki"))
+return "wiki";
+
+/* SEARCH */
+if(msg.includes("search") || msg.includes("google") || msg.includes("find"))
+return "search";
+
+/* MATH */
+if(/^[0-9+\-*/(). ]+$/.test(msg)) return "math";
+
+/* NAME */
+if(msg.includes("my name")) return "memory";
+
+/* DEFAULT */
+return "chat";
+}
+
+
+/* ================= AI ENGINE ================= */
+async function getAIReply(message){
+
+let msg = message.trim();
+let intent = detectIntent(msg);
+
+
+/* ================= MEMORY ================= */
+if(intent === "memory"){
+
+if(msg.toLowerCase().includes("my name is")){
+let name = msg.replace(/my name is/i,"").trim();
+memory.name = name;
+saveMemory();
+return "Nice to meet you " + name;
+}
+
+return memory.name ? "Your name is " + memory.name : "I don't know your name yet";
+}
+
+
+/* ================= WEATHER ================= */
+if(intent === "weather"){
+
+let match = msg.match(/in (.+)/i);
+let city = match ? match[1].trim() : msg.replace("weather","").trim();
+
+if(!city) return "Try: weather in Cagayan de Oro";
+
+let geo = await fetch(
+"https://geocoding-api.open-meteo.com/v1/search?name=" +
+encodeURIComponent(city)
+);
+
+let g = await geo.json();
+if(!g.results) return "City not found";
+
+let lat = g.results[0].latitude;
+let lon = g.results[0].longitude;
+
+let w = await fetch(
+`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
+);
+
+let data = await w.json();
+
+if(!data.current_weather) return "Weather unavailable";
+
+return "🌦️ Weather in " + city + ": " +
+data.current_weather.temperature + "°C";
+}
+
+
+/* ================= WIKI ================= */
+if(intent === "wiki"){
+
+let topic = msg
+.replace("what is","")
+.replace("who is","")
+.replace("wiki","")
+.trim();
+
+if(!topic) return "Try: what is AI";
+
+let res = await fetch(
+"https://en.wikipedia.org/api/rest_v1/page/summary/" +
+encodeURIComponent(topic)
+);
+
+let data = await res.json();
+
+if(!data.extract || data.title === "Not found."){
+return "No info found for: " + topic;
+}
+
+return "📘 " + data.extract;
+}
+
+
+/* ================= SEARCH ================= */
+if(intent === "search"){
+
+let q = msg.replace(/search|google|find/gi,"").trim();
+
+if(!q) return "Try: search cats";
+
+window.open(
+"https://duckduckgo.com/?q=" + encodeURIComponent(q),
+"_blank"
+);
+
+return "🔍 Searching for: " + q;
+}
+
+
+/* ================= MATH ================= */
+if(intent === "math"){
+try{
+return "🧮 " + Function('"use strict";return (' + msg + ')')();
+}catch{
+return "Invalid math";
+}
+}
+
+
+/* ================= SMART CHAT FALLBACK ================= */
+if(msg.includes("hello")) return "Hello! I'm YuanAI Ultra 🤖";
+
+if(msg.includes("your name")) return "I'm YuanAI Ultra AI Version";
+
+if(msg.includes("what is yuan ai"))
+return "YuanAI is a smart AI assistant with internet + memory features";
+
+if(msg.includes("about yuanylms website"))
+return "Did you know that Yuanylms Website is safe and has multiple versions like gaming and social features? This website run by Yuan (not me) but the CEO of YMLS! It includes anti-hacker protection systems and different game experiences like Speed Runner. You can also explore posts and features from Yuanylms social platforms. Copy the link https://stupid-cyan-qdmfsht6ub.edgeone.app/ to learn more. If you ask more about it? Let me know :)";
+
+if(msg.includes("best movies to watch"))
+return `According to me -> The "best" movie often depends on your mood, but here are some:
+- The Super Mario Galaxy the Movie
+- Lee Cronin's The Mummy
+- Project Hail Mary
+- The Drama
+If you ask more of them? Just ask me instead of searching :)`;
+
+if(msg.includes("yuanylms"))
+return `Yuanylms also known as Yuan Manuel Sarmiento and he is a alias content creator, producer and singer and a creator of Yuan AI. Also known as Prod by Yuan, the creator is active across several digital platforms:
+- BandLab (Yuan recently post Hip-Hop genre content and also a video tutorial on how to produce music)
+- SoundCloud (Yuan recently post several musics like hip-hop actually, and then the music went viral title core fights are in soundcloud)
+- Spotify (Yuan recenly didn't release music nor make it on beatstars for producer, Yuan instead releases music on soundcloud and bandlab)
+- YouTube (Yuan post several Roblox walkthroughs and tutorials and then Yuan post YMLS group media broadcast ready post @ymlsgroup media)
+If you like more Yuanylms social medias like facebook and TikTok? Just ask me instead of searching :)`;
+
+if(msg.includes("sara duterte impeachment"))
+return `In the Philippines, the House panel hearings are the top story. People are searching for the "live stream of impeachment hearing" and updates on "Duterte joint bank accounts." But I don't trust them very much.
+Why:
+- I declare that this statement is not continue
+- My feeling as an ai is the hearing in the Philippines are suck (not all of them either).
+- I'm a Duterte Supporter when I am a AI agent to you
+- If you don't trust me either trust my option? thats on your choice right now!
+If you frequenly ask about Rodrigo Duterte at ICC and how to bring him home? Just ask me directly :) I'll get updates on other social media sources!`;
+
+if(msg.includes("upcat 2026 results"))
+return `UPCAT results are insane!! 
+according to me - Education searches are spiking as the University of the Philippines released its latest entrance exam results today.
+If you ever find University of the Philippines entrance exam results? Then, ask me :)`;
+
+if(msg.includes("earth day mobilization"))
+return `According to me, large-scale protests and climate rallies are trending, particularly near major embassies and government buildings.
+The Earth Day 2026 mobilization is massive this year. With the theme "Our Power, Our Planet," the focus has shifted from just asking governments for change to showing how communities and individuals are taking the lead themselves.
+Here are the key pillars of the mobilization happening right now:
+The "Great Mother March" & Global Rallies:
+- The DC finale: A flagship 500-mile pilgrimage called the Great Mother March is arriving in Washington, D.C. today. It started in North Carolina over a month ago to highlight community resilience and frontline climate struggles.
+- New York Uprising: Extinction Rebellion is currently holding a major "Earth Day Uprising" march in NYC, targeting fossil fuel subsidies and calling for better protections for climate activists.
+- London & Europe: Similar marches are clogging major arteries in London and Paris, focusing on "Environmental Literacy" and voter registration to ensure climate stays at the top of the ballot for upcoming elections.
+
+Radical Reforestation & Cleanups:
+- Guinness World Record Attempt: In Kenya, activist Hillary Kiplagat Kibiwott is attempting to plant 24,000 trees in 24 hours.
+- Great Global Cleanup: This is the largest coordinated volunteer event today. Millions of people are participating in neighborhood cleanups, but the "trendier" version this year is "Dive for Earth Day," where scuba communities in places like Costa Rica and Hawaii are conducting massive underwater plastic removals.
+
+If you ever ask me more about Earth Day Mobilization topic? Just ask me instead of searching :)`;
+
+if(msg.includes("glowing trees"))
+return `According to their message is that the scientists finally captured trees emitting electrical glows during thunderstorms. Search terms include "corona discharges nature" and "st. elmo's fire trees." If you want more Glowing tress discovery? Just ask me instead of searching :)`;
+
+if(msg.includes("sorry, i can't. i have therapy trend"))
+return `Nowadays, the latest "humanizing" trend where people show their version of "therapy"—which usually involves a hobby, a product, or a quiet moment.
+If you want more "Social media trends online" contents? Just ask me instead of searching`;
+
+if(msg.includes("bluescreen"))
+return `Fixing bluescreen of death is easy! Try this method:
+1. Run Command Promt as admin
+2. type and run sfc /scannow 
+3. also type and run dism /online /cleanup-image to fix the Windows system inside
+4. Also if you disk is corrupt? Its a sign to type and run chkdsk C: /f /r /c (NOTE: replace C: as the right letter point where the disk corrupt)
+5. Restart your PC (Safe and simple)
+In another hand bluescreen is a fatal error (like MEMORY_MANAGEMENT) in Microsoft Windows (exept win11 25H2 uses blackscreen), also chroma key or blue-screen compositing, a technique for combining two still images or video frames.
+If you have more about fix bluescreen? Just ask me instead of searching`;
+
+/* DEFAULT */
+return "I can help with weather, wiki, search, math, and memory.";
+}
+
+
+/* ================= SEND ================= */
+async function sendMessage(){
+
+let entry = document.getElementById("entry");
+let text = entry.value;
+
+if(!text.trim()) return;
+
+addMessage("You", text);
+
+let reply = await getAIReply(text);
+
+addMessage("YuanAI Ultra 1.0", reply);
+
+entry.value = "";
+}
+
+
+/* ================= IMAGE ================= */
+function generateImage(){
+let prompt = document.getElementById("imgPrompt").value;
+let img = document.getElementById("imgOut");
+
+if(!prompt.trim()) return;
+
+img.src = "https://image.pollinations.ai/prompt/" +
+encodeURIComponent(prompt);
+}
+
+
+/* ================= SEARCH BUTTON ================= */
+function searchWeb(){
+let q = document.getElementById("entry").value;
+if(!q.trim()) return;
+
+window.open(
+"https://duckduckgo.com/?q=" + encodeURIComponent(q),
+"_blank"
+);
+}
+
+
+/* ================= WEATHER SHORTCUT ================= */
+function getWeather(){
+let city = document.getElementById("entry").value;
+if(!city.trim()) return;
+
+document.getElementById("entry").value = "weather in " + city;
+sendMessage();
+}
+
+</script>
+</body>
+</html>
